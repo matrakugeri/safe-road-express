@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 const userSchema = new mongoose.Schema({
   firstName: {
@@ -19,7 +20,17 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please provide a password"],
     minlength: 8,
+    select: false,
   },
+  role: {
+    type: String,
+    enum: ["admin", "user"],
+    default: "user",
+  },
+});
+
+userSchema.pre("save", async function () {
+  this.password = await bcrypt.hash(this.password, 12);
 });
 
 const User = mongoose.model("User", userSchema);
