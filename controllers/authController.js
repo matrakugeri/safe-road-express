@@ -1,14 +1,24 @@
-import express from "express";
 import AppError from "../utils/AppError.js";
 import catchAsync from "../utils/catchAsync.js";
 import User from "../models/userModel.js";
 import jwt from "jsonwebtoken";
+import { rateLimit } from "express-rate-limit";
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRATION,
   });
 };
+
+export const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  handler: (req, res) => {
+    res.status(429).json({
+      message: "Too many requests, try again later",
+    });
+  },
+});
 
 export const register = catchAsync(async (req, res, next) => {
   if (!req.body) return next(new AppError("No request body was provided", 400));
@@ -41,9 +51,10 @@ export const login = catchAsync(async (req, res, next) => {
   const user = await User.findOne({
     email,
   }).select("+password");
-  const correct = await user.correctPassword(password, user.password);
-  if (!user || !correct)
+
+  if (!user || !(await user.correctPassword(password, user.password))) {
     return next(new AppError("Incorrect email or password", 401));
+  }
   const jwt = signToken(user.id);
   user.password = undefined;
   res.status(200).json({
@@ -53,4 +64,8 @@ export const login = catchAsync(async (req, res, next) => {
       user,
     },
   });
+});
+
+export const protect = catchAsync(async (req, res, next) => {
+  const authorization = req.headers.authorization;
 });
