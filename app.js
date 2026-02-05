@@ -13,9 +13,7 @@ app.use(
     credentials: true,
   }),
 );
-
 app.use("/api/v1/users", userRouter);
-
 app.use(globalErrorHandler);
 
 export default app;
