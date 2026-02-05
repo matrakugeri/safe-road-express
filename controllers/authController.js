@@ -30,16 +30,37 @@ export const register = catchAsync(async (req, res, next) => {
     password: req.body.password,
   };
 
+  const existingUser = User.findOne({ email: user.email });
+  if (existingUser)
+    return next(new AppError("User with this email already exists", 403));
+
   const newUser = await User.create(user);
-  const jwt = signToken(newUser.id);
-  console.log(newUser, jwt);
+  const token = signToken(newUser.id);
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRATION * 24 * 60 * 60 * 1000,
+    ),
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+  };
+
+  const hintCookieOptions = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRATION * 24 * 60 * 60 * 1000,
+    ),
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: false,
+  };
+
+  res.cookie("jwt", token, cookieOptions);
+  res.cookie("auth_hint", true);
 
   newUser.password = undefined;
   res.status(201).json({
-    data: newUser,
-    token: jwt,
+    data: {
+      user: newUser,
+    },
     status: "success",
-    message: "User was successfully created",
   });
 });
 
@@ -55,11 +76,19 @@ export const login = catchAsync(async (req, res, next) => {
   if (!user || !(await user.correctPassword(password, user.password))) {
     return next(new AppError("Incorrect email or password", 401));
   }
-  const jwt = signToken(user.id);
+  const token = signToken(user.id);
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + process.env.JWT_COOKIE_EXPIRATION * 24 * 60 * 60 * 1000,
+    ),
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+  };
+
+  res.cookie("jwt", token, cookieOptions);
   user.password = undefined;
   res.status(200).json({
     status: "success",
-    token: jwt,
     data: {
       user,
     },
@@ -67,5 +96,53 @@ export const login = catchAsync(async (req, res, next) => {
 });
 
 export const protect = catchAsync(async (req, res, next) => {
-  const authorization = req.headers.authorization;
+  let token;
+  if (req.cookies.jwt) {
+    token = req.cookies.jwt;
+  }
+  if (!token)
+    return next(new AppError(`You are not logged in ,Please log in!`, 401));
+
+  // Verify the token signature.
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+  // Check if the user still exist after the token was issued
+  const currentUser = await User.findById(decoded.id);
+
+  if (!currentUser) {
+    return next(
+      new AppError(`The token belonging to user does no longer exist`, 401),
+    );
+  }
+  req.user = currentUser;
+  next();
+});
+
+export const isLoggedIn = catchAsync(async (req, res, next) => {
+  const user = req.user;
+  if (!user) return next(new AppError(`You are not logged in`, 401));
+  return res.status(200).json({
+    status: "success",
+    data: {
+      user,
+    },
+  });
+});
+
+export const logout = catchAsync(async (req, res, next) => {
+  res.clearCookie("jwt", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  });
+
+  res.clearCookie("auth_hint", {
+    httpOnly: false,
+    secure: process.env.NODE_env === "production",
+    path: "/",
+  });
+
+  res.status(200).json({
+    message: "Successfully logged out",
+  });
 });
