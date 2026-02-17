@@ -21,8 +21,8 @@ export const loginLimiter = rateLimit({
 });
 
 export const register = catchAsync(async (req, res, next) => {
+  console.log(req.body, "NOOOOO");
   if (!req.body) return next(new AppError("No request body was provided", 400));
-
   const user = {
     firstName: req.body.firstName,
     lastName: req.body.lastName,
@@ -30,9 +30,10 @@ export const register = catchAsync(async (req, res, next) => {
     password: req.body.password,
   };
 
-  const existingUser = User.findOne({ email: user.email });
-  if (existingUser)
+  const existingUser = await User.findOne({ email: user.email });
+  if (existingUser) {
     return next(new AppError("User with this email already exists", 403));
+  }
 
   const newUser = await User.create(user);
   const token = signToken(newUser.id);
@@ -53,7 +54,6 @@ export const register = catchAsync(async (req, res, next) => {
   };
 
   res.cookie("jwt", token, cookieOptions);
-  res.cookie("auth_hint", true);
 
   newUser.password = undefined;
   res.status(201).json({
